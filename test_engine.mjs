@@ -29,3 +29,15 @@ for (let i = 0; i < refs.length; i++) {
 }
 
 console.log(`\n=== ${pass}/${refs.length} matched rough expectation ===`);
+
+// Federation regression: real-but-non-Crossref references must NOT be called
+// fabricated, and fabrications must NOT be rescued by the extra sources.
+console.log('\n--- federation invariants ---');
+const datacite = await checkReference('GBIF.org. Occurrence Download. 2020. https://doi.org/10.15468/dl.zv4r9n');
+console.log(`DataCite DOI    : ${datacite.status.toUpperCase()}  ${datacite.status !== 'notfound' ? 'PASS (real DOI not flagged fake) ✅' : 'FAIL ❌'}`);
+
+const book = await checkReference('Kuhn TS. The structure of scientific revolutions. University of Chicago Press; 1962.');
+console.log(`Book (OpenAlex) : ${book.status.toUpperCase()}  ${book.status !== 'notfound' ? 'PASS (book found via OpenAlex) ✅' : 'FAIL ❌'}`);
+
+const fake = await checkReference('Zhang L, Patel A. Quantum entanglement effects on photosynthetic efficiency in mammalian neurons. J Adv Cell Biophys. 2021;14:221-238.');
+console.log(`Fabricated      : ${fake.status.toUpperCase()}  ${fake.status === 'notfound' ? 'PASS (fake still caught) ✅' : 'FAIL ❌'}`);

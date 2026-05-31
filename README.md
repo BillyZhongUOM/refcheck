@@ -28,11 +28,11 @@ A summary banner tallies the counts and gives a one-line verdict.
 
 Two files, no build step, no backend:
 
-- **`engine.js`** — the verification engine, a pure ES module that runs unchanged in the browser and in Node 18+ (both have a global `fetch`).
-  - Splits a pasted reference list into individual entries (handles numbered lists, blank-line-separated, or one-per-line).
-  - If a reference contains a DOI, looks it up directly — a 404 is a strong "fabricated" signal.
-  - Otherwise queries Crossref `query.bibliographic`, then picks the best record by a **composite score** = title-word coverage + author corroboration + year agreement (not title overlap alone — that lets same-title letters/replies win).
-  - For a confident match it re-fetches the canonical record by DOI to read authoritative retraction metadata (`updated-by`), with a title-prefix (`RETRACTED:`) fallback.
+- **`engine.js`** is the verification engine, a pure ES module that runs unchanged in the browser and in Node 18+ (both have a global `fetch`).
+  - Splits a pasted reference list into individual entries (numbered lists, blank-line-separated, or one-per-line).
+  - **DOI references** resolve registrar-agnostically: Crossref first (richest retraction metadata), then doi.org content negotiation (DataCite, mEDRA, JaLC, and others). Only a DOI that no registrar knows is treated as fabricated, so a valid dataset or thesis DOI is never mistaken for a fake.
+  - **Title references** are searched across **Crossref and OpenAlex in parallel** (roughly 400M records combined: journals, books, datasets, theses, preprints, non-DOI works). The best record is chosen by a **composite score** of title-word coverage, author corroboration, and year agreement, not title overlap alone (that would let same-title letters win). A reference is "not found" only when every source misses, which is what keeps real-but-obscure references from being flagged as fabricated.
+  - Retractions come from Crossref `updated-by`, OpenAlex `is_retracted`, and a `RETRACTED:` title fallback.
 - **`index.html`** — a single-page UI that imports `engine.js` and `i18n.js`, runs checks with a concurrency pool, and renders results progressively. Editorial design (serif display, warm-monochrome surfaces, one navy accent, pastel semantic statuses, inline SVG icons, subtle motion) built to read as a serious academic tool, applying the [taste-skill](https://github.com/leonxlnx/taste-skill) anti-slop frontend guidelines.
 - **`i18n.js`** — the language layer: 12 locales (English, 简体中文, 繁體中文, Español, हिन्दी, العربية, Português, Français, Русский, 日本語, Deutsch, 한국어), full right-to-left support for Arabic, browser-language auto-detection, and a saved preference. Engine notes are language-neutral codes, so a single verification result renders in any language and switches live without re-checking.
 
@@ -86,7 +86,7 @@ Maps directly onto the "make-it-free → traffic → monetise" logic:
 
 ## Accuracy & limitations (MVP)
 
-- **Coverage** = Crossref. Excellent for journal articles and conference papers with DOIs; books, some humanities, and grey literature are patchier. PubMed is not yet wired in (planned for the paid accuracy tier).
+- **Coverage** is federated across Crossref and OpenAlex, with registrar-agnostic DOI resolution via doi.org. This spans journals, books, datasets, theses, and preprints, so real-but-obscure references are no longer falsely flagged as fabricated. Remaining gaps: some non-DOI books and very local or historical sources. Optional further sources (Open Library for books, PubMed for biomedical PMIDs, Semantic Scholar for CS and preprints) can be added to the same federation.
 - **Retraction depth** — uses Crossref's retraction metadata + title flags. The full Retraction Watch dataset catches more; that is a paid-tier upgrade.
 - **Parsing** — the splitter handles common formats but very irregular bibliographies may need one-reference-per-line.
 - **Rate limits** — client-side calls share the user's IP against Crossref's public pool; fine for a manuscript-sized list, not for thousands at once (that is the batch-API use case).

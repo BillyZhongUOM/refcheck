@@ -15,6 +15,7 @@
 // derives its label from `status` via the i18n layer and ignores it.
 
 const CROSSREF = 'https://api.crossref.org/works';
+const OPENALEX = 'https://api.openalex.org/works';
 
 // Generic English function words only. We deliberately keep domain words
 // (clinical, trial, quantum, cancer …) because those carry the matching signal.
@@ -88,11 +89,11 @@ function delay(ms, signal) {
 
 // Fetch JSON with retry + backoff. Transient failures (network drop, 429 rate
 // limit, 5xx) are retried rather than surfaced as an error to the user.
-async function fetchJSON(url, signal, tries = 3) {
+async function fetchJSON(url, signal, tries = 3, accept = 'application/json') {
   let lastErr;
   for (let attempt = 0; attempt < tries; attempt++) {
     try {
-      const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
+      const res = await fetch(url, { signal, headers: { Accept: accept } });
       if (res.status === 404) return { status: 404, data: null };
       if (res.status === 429 || res.status >= 500) {
         lastErr = new Error(`Crossref ${res.status}`);
@@ -125,6 +126,54 @@ async function crossrefByDOI(doi, mailto, signal) {
   return (data && data.message) || null;
 }
 
+// OpenAlex: ~250M works across every discipline (journals, books, datasets,
+// theses, preprints, non-DOI works). The single broadest complement to Crossref.
+async function openalexQuery(raw, mailto, signal) {
+  let url = `${OPENALEX}?per_page=8&search=${encodeURIComponent(raw)}`;
+  if (mailto) url += `&mailto=${encodeURIComponent(mailto)}`;
+  const { data } = await fetchJSON(url, signal);
+  return ((data && data.results) || []).map(normalizeOpenAlex);
+}
+
+function stripTags(s) { return (s || '').replace(/<[^>]*>/g, ''); }
+
+// Normalise an OpenAlex work into the same shape the scoring helpers expect.
+function normalizeOpenAlex(w) {
+  const authors = (w.authorships || []).map(a => {
+    const dn = (a.author && a.author.display_name) || a.raw_author_name || '';
+    const parts = dn.trim().split(/\s+/);
+    return parts.length > 1 ? { family: parts[parts.length - 1], given: parts.slice(0, -1).join(' ') } : { family: dn };
+  });
+  return {
+    title: [stripTags(w.title || w.display_name || '')],
+    author: authors,
+    'container-title': [(w.primary_location && w.primary_location.source && w.primary_location.source.display_name) || ''],
+    issued: { 'date-parts': [[w.publication_year].filter(Boolean)] },
+    DOI: (w.doi || '').replace(/^https?:\/\/doi\.org\//, ''),
+    type: w.type,
+    _retracted: !!w.is_retracted,
+    _src: 'openalex',
+  };
+}
+
+// Registrar-agnostic DOI resolution via doi.org content negotiation (CSL JSON).
+// Resolves Crossref, DataCite, mEDRA, JaLC, etc. so a valid non-Crossref DOI is
+// not mistaken for a fabricated one.
+async function resolveDoiOrg(doi, signal) {
+  const url = `https://doi.org/${encodeURIComponent(doi)}`;
+  const { status, data } = await fetchJSON(url, signal, 2, 'application/vnd.citationstyles.csl+json');
+  if (status === 404 || !data || typeof data !== 'object') return null;
+  return {
+    title: [stripTags(Array.isArray(data.title) ? data.title[0] : data.title || '')],
+    author: data.author || [],
+    'container-title': [Array.isArray(data['container-title']) ? data['container-title'][0] : (data['container-title'] || '')],
+    issued: data.issued || {},
+    DOI: data.DOI || doi,
+    type: data.type,
+    _src: 'doi.org',
+  };
+}
+
 // ------------------------------------------------------------- scoring helpers
 function titleCoverage(item, inputTokenSet) {
   const title = item.title && item.title[0];
@@ -153,6 +202,7 @@ function itemYear(item) {
 }
 
 function retractionInfo(item) {
+  if (item._retracted) return { retracted: true };
   const ub = item['updated-by'] || [];
   for (const u of ub) {
     const t = (u.type || '').toLowerCase();
@@ -234,9 +284,13 @@ export async function checkReference(raw, opts = {}) {
   const doi = extractDOI(raw);
 
   try {
-    // 1) If the citation carries a DOI, that is the strongest signal.
+    // 1) If the citation carries a DOI, that is the strongest signal. Resolve it
+    //    registrar-agnostically: Crossref first (richest retraction metadata),
+    //    then doi.org content negotiation (DataCite, mEDRA, JaLC, ...). Only a
+    //    DOI that NO registrar knows is treated as fabricated.
     if (doi) {
-      const item = await crossrefByDOI(doi, mailto, signal);
+      let item = await crossrefByDOI(doi, mailto, signal).catch(() => null);
+      if (!item) item = await resolveDoiOrg(doi, signal).catch(() => null);
       if (!item) return mk('notfound', 'Fake DOI', raw, null, 0, [{ code: 'fakedoi', doi }]);
       const cov = titleCoverage(item, inputTokenSet);
       const r = buildResult(raw, item, cov, inputNorm, inputYear);
@@ -244,10 +298,16 @@ export async function checkReference(raw, opts = {}) {
       return r;
     }
 
-    // 2) Otherwise do a bibliographic search. Pick the best record by a
-    //    composite of title overlap + author corroboration + year agreement,
-    //    not title overlap alone (same-title letters/replies otherwise win).
-    const items = await crossrefQuery(raw, mailto, signal);
+    // 2) Otherwise federate the title search across Crossref AND OpenAlex, then
+    //    pick the best record by a composite of title overlap + author + year.
+    //    Federation is what keeps real-but-obscure references (books, datasets,
+    //    theses, preprints, regional journals) from being flagged as fabricated:
+    //    we only say "not found" when EVERY source misses.
+    const [crItems, oaItems] = await Promise.all([
+      crossrefQuery(raw, mailto, signal).catch(() => []),
+      openalexQuery(raw, mailto, signal).catch(() => []),
+    ]);
+    const items = [...crItems, ...oaItems];
     if (!items.length) return mk('notfound', 'No match', raw, null, 0, [{ code: 'notfound' }]);
 
     let best = null, bestScore = -1, bestCov = 0;
