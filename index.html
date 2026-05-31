@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RefCheck — Spot fabricated &amp; retracted citations in seconds</title>
+<meta name="description" content="Paste a reference list and instantly find fabricated, retracted, or mis-cited papers. Free, runs in your browser, powered by Crossref." />
+<style>
+  :root{
+    --bg:#f6f7fb; --card:#ffffff; --ink:#1f2430; --muted:#6b7280; --line:#e6e8ef;
+    --accent:#4f46e5; --accent-d:#4338ca;
+    --green:#15803d; --green-bg:#ecfdf3; --green-line:#abefc6;
+    --amber:#b45309; --amber-bg:#fffaeb; --amber-line:#fde68a;
+    --red:#b42318; --red-bg:#fef3f2; --red-line:#fecdca;
+    --purple:#6d28d9; --purple-bg:#f5f3ff; --purple-line:#ddd6fe;
+    --grey:#475467; --grey-bg:#f2f4f7; --grey-line:#e4e7ec;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:880px; margin:0 auto; padding:32px 20px 80px}
+  header.hero{text-align:center; padding:18px 0 26px}
+  .brand{display:inline-flex; align-items:center; gap:10px; font-weight:700; font-size:15px; color:var(--accent); letter-spacing:.2px}
+  .brand .dot{width:10px;height:10px;border-radius:3px;background:var(--accent);display:inline-block;transform:rotate(45deg)}
+  h1{font-size:32px; line-height:1.2; margin:14px 0 10px; letter-spacing:-.5px}
+  .sub{color:var(--muted); font-size:15.5px; max-width:660px; margin:0 auto}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 1px 2px rgba(16,24,40,.04); padding:18px}
+  .panel{margin-top:8px}
+  textarea{
+    width:100%; min-height:190px; resize:vertical; border:1px solid var(--line); border-radius:12px;
+    padding:14px 15px; font-size:14px; line-height:1.6; color:var(--ink); background:#fcfcfe;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  textarea:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px}
+  .spacer{flex:1}
+  button{font:inherit; cursor:pointer; border-radius:10px; border:1px solid transparent; padding:10px 16px; font-weight:600; font-size:14px}
+  .btn-primary{background:var(--accent); color:#fff}
+  .btn-primary:hover{background:var(--accent-d)}
+  .btn-primary:disabled{opacity:.55; cursor:default}
+  .btn-ghost{background:#fff; color:var(--ink); border-color:var(--line)}
+  .btn-ghost:hover{background:#f8f9fc}
+  .hint{font-size:12.5px; color:var(--muted)}
+  /* summary */
+  .summary{display:none; margin-top:18px}
+  .verdict{font-size:15px; font-weight:600; margin-bottom:12px}
+  .chips{display:flex; gap:8px; flex-wrap:wrap}
+  .chip{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:5px 10px; border-radius:999px; border:1px solid}
+  .chip b{font-weight:700}
+  .c-verified{color:var(--green); background:var(--green-bg); border-color:var(--green-line)}
+  .c-check{color:var(--amber); background:var(--amber-bg); border-color:var(--amber-line)}
+  .c-weak{color:var(--amber); background:var(--amber-bg); border-color:var(--amber-line)}
+  .c-notfound{color:var(--red); background:var(--red-bg); border-color:var(--red-line)}
+  .c-retracted{color:var(--purple); background:var(--purple-bg); border-color:var(--purple-line)}
+  .c-error{color:var(--grey); background:var(--grey-bg); border-color:var(--grey-line)}
+  /* results */
+  .results{margin-top:16px; display:flex; flex-direction:column; gap:10px}
+  .res{border:1px solid var(--line); border-left-width:4px; border-radius:12px; padding:12px 14px; background:#fff}
+  .res.s-verified{border-left-color:var(--green)}
+  .res.s-check,.res.s-weak{border-left-color:var(--amber)}
+  .res.s-notfound{border-left-color:var(--red)}
+  .res.s-retracted{border-left-color:var(--purple)}
+  .res.s-error{border-left-color:var(--grey)}
+  .res.s-pending{border-left-color:var(--line)}
+  .res-head{display:flex; align-items:flex-start; gap:10px}
+  .badge{flex:none; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:7px; border:1px solid; white-space:nowrap}
+  .b-verified{color:var(--green); background:var(--green-bg); border-color:var(--green-line)}
+  .b-check,.b-weak{color:var(--amber); background:var(--amber-bg); border-color:var(--amber-line)}
+  .b-notfound{color:var(--red); background:var(--red-bg); border-color:var(--red-line)}
+  .b-retracted{color:var(--purple); background:var(--purple-bg); border-color:var(--purple-line)}
+  .b-error{color:var(--grey); background:var(--grey-bg); border-color:var(--grey-line)}
+  .b-pending{color:var(--grey); background:var(--grey-bg); border-color:var(--grey-line)}
+  .res-in{font-size:13px; color:var(--ink); word-break:break-word}
+  .res-num{color:var(--muted); font-weight:700; margin-right:4px}
+  .matched{margin-top:8px; font-size:12.5px; color:var(--muted); background:#fafbff; border:1px solid var(--line); border-radius:9px; padding:8px 10px}
+  .matched .mt{color:var(--ink); font-weight:600}
+  .notes{margin:8px 0 0; padding-left:0; list-style:none; display:flex; flex-direction:column; gap:4px}
+  .notes li{font-size:12.5px; color:var(--grey); padding-left:16px; position:relative}
+  .notes li::before{content:"›"; position:absolute; left:3px; color:var(--muted)}
+  .notes li.warn{color:var(--red)}
+  .spin{display:inline-block; width:12px; height:12px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:sp .7s linear infinite; vertical-align:-1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  /* footer */
+  footer{margin-top:34px; text-align:center; color:var(--muted); font-size:12.5px; line-height:1.7}
+  .road{margin-top:24px; background:linear-gradient(180deg,#fff,#fbfbff); border:1px dashed var(--line); border-radius:14px; padding:16px 18px; text-align:center}
+  .road b{color:var(--ink)}
+  .privacy{margin-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="brand"><span class="dot"></span> RefCheck</div>
+    <h1>Spot fabricated &amp; retracted citations in seconds</h1>
+    <p class="sub">Paste your reference list. RefCheck checks every citation against Crossref (150M+ scholarly records)
+      and flags the ones that are fabricated, retracted, or mis-cited. Free, and it runs entirely in your browser.</p>
+  </header>
+
+  <section class="card panel">
+    <textarea id="input" placeholder="Paste your references here — one per line, or a whole numbered reference list.&#10;&#10;e.g.&#10;1. Smith J, Doe A. A study of something important. Journal of Things. 2020;12(3):45-60.&#10;2. ..."></textarea>
+    <div class="row">
+      <button class="btn-primary" id="run">Check references</button>
+      <button class="btn-ghost" id="example">Load example</button>
+      <button class="btn-ghost" id="clear">Clear</button>
+      <span class="spacer"></span>
+      <span class="hint" id="count">0 references</span>
+    </div>
+  </section>
+
+  <section class="summary card" id="summary">
+    <div class="verdict" id="verdict"></div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <section class="results" id="results"></section>
+
+  <div class="road">
+    🚧 <b>This free checker is already useful on its own.</b> Coming next: drop in a whole PDF or Word manuscript and
+    RefCheck pulls out and checks the reference list automatically · a Word &amp; Google Docs add-in · a bulk API for journal editors.
+  </div>
+
+  <footer>
+    <div class="privacy">
+      🔒 The references you paste are sent only to <a href="https://www.crossref.org/" target="_blank" rel="noopener">Crossref</a>'s
+      public API for matching. They never touch a server we control, and nothing is stored.
+    </div>
+    <div style="margin-top:10px">Data source: Crossref REST API · Retraction signals from Crossref / Retraction Watch · Open MVP.</div>
+  </footer>
+
+</div>
+
+<script type="module">
+import { splitReferences, checkReference } from './engine.js';
+
+// Optional: a contact address puts you in Crossref's faster "polite pool".
+// Leave empty to use the public pool, or set your own address before deploying.
+const MAILTO = '';
+
+const $ = (id) => document.getElementById(id);
+const input = $('input'), results = $('results'), summary = $('summary');
+
+const LABELS = {
+  verified:  { txt:'Verified',        cls:'verified' },
+  check:     { txt:'Check metadata',  cls:'check' },
+  weak:      { txt:'Unconfirmed',     cls:'weak' },
+  notfound:  { txt:'Not found',       cls:'notfound' },
+  retracted: { txt:'RETRACTED',       cls:'retracted' },
+  error:     { txt:'Error',           cls:'error' },
+};
+
+const EXAMPLE = `1. Watson JD, Crick FHC. Molecular structure of nucleic acids: a structure for deoxyribose nucleic acid. Nature. 1953;171(4356):737-738.
+2. Wakefield AJ, Murch SH, Anthony A, et al. Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children. Lancet. 1998;351(9103):637-641.
+3. Zhang L, Smith JR, Patel A. Quantum entanglement effects on photosynthetic efficiency in mammalian cortical neurons. Journal of Advanced Cellular Biophysics. 2021;14(3):221-238.
+4. Fisher RA. The correlation between relatives on the supposition of Mendelian inheritance. Nature. 1925;52:399-433.`;
+
+function esc(s){ return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function updateCount(){
+  const n = splitReferences(input.value).length;
+  $('count').textContent = n + (n === 1 ? ' reference' : ' references');
+}
+input.addEventListener('input', updateCount);
+
+$('example').addEventListener('click', () => { input.value = EXAMPLE; updateCount(); });
+$('clear').addEventListener('click', () => { input.value=''; updateCount(); results.innerHTML=''; summary.style.display='none'; });
+
+function pendingCard(i, raw){
+  const el = document.createElement('div');
+  el.className = 'res s-pending';
+  el.id = 'res-' + i;
+  el.innerHTML = `<div class="res-head">
+      <span class="badge b-pending"><span class="spin"></span> Checking</span>
+      <div class="res-in"><span class="res-num">${i+1}.</span>${esc(raw)}</div>
+    </div>`;
+  return el;
+}
+
+function renderResult(i, raw, r){
+  const el = $('res-' + i);
+  if(!el) return;
+  el.className = 'res s-' + r.status;
+  const L = LABELS[r.status] || LABELS.error;
+  let html = `<div class="res-head">
+      <span class="badge b-${L.cls}">${L.txt}</span>
+      <div class="res-in"><span class="res-num">${i+1}.</span>${esc(raw)}</div>
+    </div>`;
+  if(r.matched){
+    const m = r.matched;
+    const doi = m.doi ? `<a href="https://doi.org/${esc(m.doi)}" target="_blank" rel="noopener">https://doi.org/${esc(m.doi)}</a>` : '';
+    html += `<div class="matched">
+        <div class="mt">${esc(m.title)}</div>
+        <div>${esc([m.authors, m.journal, m.year].filter(Boolean).join(' · '))}</div>
+        ${doi ? `<div style="margin-top:3px">${doi}</div>` : ''}
+      </div>`;
+  }
+  if(r.notes && r.notes.length){
+    const danger = (r.status === 'retracted' || r.status === 'notfound');
+    html += `<ul class="notes">${r.notes.map(n => `<li class="${danger?'warn':''}">${esc(n)}</li>`).join('')}</ul>`;
+  }
+  el.innerHTML = html;
+}
+
+function renderSummary(rs){
+  const c = { verified:0, check:0, weak:0, notfound:0, retracted:0, error:0 };
+  rs.forEach(r => c[r.status]++);
+  const order = ['retracted','notfound','weak','check','verified','error'];
+  const chips = order.filter(k => c[k] > 0).map(k => {
+    const L = LABELS[k];
+    return `<span class="chip c-${L.cls}"><b>${c[k]}</b> ${L.txt}</span>`;
+  }).join('');
+  $('chips').innerHTML = chips;
+
+  const flagged = c.retracted + c.notfound;
+  let verdict;
+  if(flagged > 0){
+    const bits = [];
+    if(c.retracted) bits.push(`${c.retracted} retracted`);
+    if(c.notfound) bits.push(`${c.notfound} not found`);
+    verdict = `⚠️ Found ${bits.join(' and ')} — review these carefully before submitting.`;
+  } else if(c.check + c.weak > 0){
+    verdict = `✅ No fabrications or retractions, but ${c.check + c.weak} reference${c.check + c.weak>1?'s':''} need a metadata check.`;
+  } else {
+    verdict = `✅ All ${c.verified} reference${c.verified>1?'s':''} passed.`;
+  }
+  if(c.error > 0) verdict += ` (${c.error} couldn't be checked — try again.)`;
+  $('verdict').textContent = verdict;
+  summary.style.display = 'block';
+}
+
+// concurrency-limited run with progressive rendering
+async function run(){
+  const refs = splitReferences(input.value);
+  if(!refs.length){ alert('Please paste at least one reference.'); return; }
+
+  const btn = $('run');
+  btn.disabled = true; btn.textContent = 'Checking…';
+  results.innerHTML = ''; summary.style.display = 'none';
+  refs.forEach((raw,i) => results.appendChild(pendingCard(i, raw)));
+
+  const out = new Array(refs.length);
+  let idx = 0;
+  const POOL = 3;
+  async function worker(){
+    while(idx < refs.length){
+      const i = idx++;
+      try { out[i] = await checkReference(refs[i], { mailto: MAILTO }); }
+      catch(e){ out[i] = { status:'error', label:'Error', input:refs[i], matched:null, notes:['Network error — try again.'], confidence:0 }; }
+      renderResult(i, refs[i], out[i]);
+    }
+  }
+  await Promise.all(Array.from({length: Math.min(POOL, refs.length)}, worker));
+
+  renderSummary(out);
+  btn.disabled = false; btn.textContent = 'Check references';
+}
+$('run').addEventListener('click', run);
+
+updateCount();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+# Internal product plan / working notes — not for the public repo
+notes/
+
+.DS_Store
+*.log
