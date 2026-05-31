@@ -91,6 +91,7 @@ Maps directly onto the "make-it-free → traffic → monetise" logic:
 - **Parsing** — the splitter handles common formats but very irregular bibliographies may need one-reference-per-line.
 - **Rate limits** — client-side calls share the user's IP against Crossref's public pool; fine for a manuscript-sized list, not for thousands at once (that is the batch-API use case).
 - This tool **flags references for human review**; it does not auto-delete or auto-"correct" anything.
+- **Reliability:** an unreachable source (offline, an API outage, a rate limit, or a request that exceeds the 15s timeout) is reported as "could not check, try again", never as "not found / fabricated". A reference is only called fabricated when a source actually answers and confirms absence. `node test_engine.mjs` exits non-zero on a real failure and skips cleanly when there is no network.
 
 ---
 

@@ -26,7 +26,11 @@ using used based study studies report reports review article paper`.split(/\s+/)
 
 // ---------------------------------------------------------------- text utils
 function normalize(s) {
-  return (s || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim();
+  // Unicode-aware: fold Latin accents (NFKD drops the combining marks, which are
+  // \p{M} not \p{L}), but PRESERVE non-Latin scripts (CJK, Cyrillic, Arabic,
+  // Greek) so non-English titles keep their matching signal instead of becoming
+  // an empty string.
+  return (s || '').toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
 function significantTokens(s) {
@@ -41,9 +45,14 @@ function extractYear(s) {
 }
 
 function extractDOI(s) {
-  const m = (s || '').match(/10\.\d{4,9}\/[^\s"<>)]+/i);
+  // DOI suffixes legitimately contain parentheses (e.g. the Elsevier/Lancet
+  // S-DOIs like 10.1016/S0140-6736(97)11096-0), so we must NOT stop at "(".
+  // We capture up to whitespace, then trim trailing citation punctuation, so a
+  // DOI written inside "(doi:...)" loses only the closing bracket, not an
+  // internal one.
+  const m = (s || '').match(/10\.\d{4,9}\/[^\s"<>]+/i);
   if (!m) return null;
-  return m[0].replace(/[.,;)]+$/, '');
+  return m[0].replace(/[.,;>)\]]+$/, '');
 }
 
 // ---------------------------------------------------------- reference splitter
@@ -56,7 +65,10 @@ export function splitReferences(text) {
   const markered = lines.filter(l => markerRe.test(l)).length;
 
   let parts;
-  if (markered >= 2) {
+  if (markered >= 1) {
+    // Numbered list: a new reference starts at each marker; wrapped continuation
+    // lines fold into the current entry. Works for a single wrapped numbered
+    // reference too, not only lists of two or more.
     parts = [];
     let cur = '';
     for (const line of lines) {
@@ -80,6 +92,8 @@ export function splitReferences(text) {
 }
 
 // --------------------------------------------------------------- crossref I/O
+const REQUEST_TIMEOUT_MS = 15000;
+
 function delay(ms, signal) {
   return new Promise((resolve, reject) => {
     const t = setTimeout(resolve, ms);
@@ -87,28 +101,47 @@ function delay(ms, signal) {
   });
 }
 
-// Fetch JSON with retry + backoff. Transient failures (network drop, 429 rate
-// limit, 5xx) are retried rather than surfaced as an error to the user.
+// Combine an optional user signal with a per-call timeout signal.
+function anySignal(...signals) {
+  const ctl = new AbortController();
+  for (const s of signals) {
+    if (!s) continue;
+    if (s.aborted) { ctl.abort(s.reason); break; }
+    s.addEventListener('abort', () => ctl.abort(s.reason), { once: true });
+  }
+  return ctl.signal;
+}
+
+// Fetch JSON with retry + backoff AND a per-request timeout. Transient failures
+// (network drop, timeout, 429 rate limit, 5xx) are retried. A user cancel (the
+// passed signal aborting) propagates immediately. If every attempt fails the
+// call THROWS, so callers can tell "service unreachable" apart from "service
+// said this does not exist" (a 404, returned as {status:404}).
 async function fetchJSON(url, signal, tries = 3, accept = 'application/json') {
   let lastErr;
   for (let attempt = 0; attempt < tries; attempt++) {
+    if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    const timer = new AbortController();
+    const to = setTimeout(() => timer.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(url, { signal, headers: { Accept: accept } });
+      const res = await fetch(url, { signal: anySignal(signal, timer.signal), headers: { Accept: accept } });
+      clearTimeout(to);
       if (res.status === 404) return { status: 404, data: null };
       if (res.status === 429 || res.status >= 500) {
-        lastErr = new Error(`Crossref ${res.status}`);
+        lastErr = new Error(`HTTP ${res.status}`);
         await delay(500 * (attempt + 1), signal);
         continue;
       }
-      if (!res.ok) throw new Error(`Crossref ${res.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return { status: res.status, data: await res.json() };
     } catch (err) {
-      if (err.name === 'AbortError') throw err;
-      lastErr = err;
+      clearTimeout(to);
+      if (signal && signal.aborted) throw err;   // genuine user cancel: stop
+      lastErr = err;                             // timeout or network: retry
       await delay(500 * (attempt + 1), signal);
     }
   }
-  throw lastErr || new Error('Crossref request failed');
+  throw lastErr || new Error('request failed');
 }
 
 async function crossrefQuery(raw, mailto, signal) {
@@ -228,9 +261,9 @@ function itemYear(item) {
 
 function retractionInfo(item) {
   if (item._retracted) return { retracted: true };
-  const ub = item['updated-by'] || [];
-  for (const u of ub) {
-    const t = (u.type || '').toLowerCase();
+  const rels = [...(item['updated-by'] || []), ...(item['update-to'] || []), ...(item.relation && item.relation['is-retracted-by'] || [])];
+  for (const u of rels) {
+    const t = (u.type || u['id-type'] || '').toLowerCase();
     const l = (u.label || '').toLowerCase();
     if (t.includes('retraction') || l.includes('retract')) return { retracted: true };
     if (t.includes('concern') || l.includes('concern')) return { concern: true };
@@ -262,6 +295,20 @@ function matchedView(item) {
   };
 }
 
+// True when the matched record's journal clearly does not appear in the input.
+// Abbreviation-tolerant: a journal word counts as present if its first 4 letters
+// occur anywhere in the input, so "Lancet" vs "The Lancet" and "J Clin Oncol"
+// vs "Journal of Clinical Oncology" are NOT flagged. Only fires when the record
+// has real journal words and none of them surface in the citation.
+function journalMismatch(item, inputNorm) {
+  const j = (item['container-title'] || [])[0] || '';
+  const jt = significantTokens(j).filter(t => t.length >= 4);
+  if (!jt.length) return false;
+  const compact = inputNorm.replace(/ /g, '');
+  for (const t of jt) if (compact.includes(t.slice(0, 4))) return false;
+  return true;
+}
+
 // ------------------------------------------------------------------- classify
 function buildResult(raw, item, cov, inputNorm, inputYear) {
   const notes = [];
@@ -274,8 +321,13 @@ function buildResult(raw, item, cov, inputNorm, inputYear) {
   const yearCorrob = !!(inputYear && myear && Math.abs(inputYear - myear) <= 1);
   const yearConflict = !!(inputYear && myear && Math.abs(inputYear - myear) > 1);
 
+  const journalOff = journalMismatch(item, inputNorm);
+
   if (yearConflict) notes.push({ code: 'year', you: inputYear, record: myear });
   if (hasAuthors && !authorMatched) notes.push({ code: 'authors', authors: formatAuthors(item) });
+  // A journal mismatch downgrades Verified to Check (below); no separate note is
+  // needed because the matched record card already shows the record's journal
+  // for the user to compare against their citation.
 
   // Retraction / concern override, only trusted on a confident match.
   if (rinfo.retracted && cov >= 0.5)
@@ -285,8 +337,13 @@ function buildResult(raw, item, cov, inputNorm, inputYear) {
 
   const corrob = (authorMatched ? 1 : 0) + (yearCorrob ? 1 : 0);
 
+  // Title + author + year all agree. Only call it Verified if the journal also
+  // looks right; a clear journal mismatch downgrades to Check metadata so a
+  // mis-cited venue is not hidden behind a green badge.
   if (cov >= 0.6 && authorMatched && (yearCorrob || !yearGiven))
-    return mk('verified', 'Verified', raw, matched, cov, notes);
+    return journalOff
+      ? mk('check', 'Check metadata', raw, matched, cov, notes)
+      : mk('verified', 'Verified', raw, matched, cov, notes);
   if (cov >= 0.6 && corrob >= 1)
     return mk('check', 'Check metadata', raw, matched, cov, notes.length ? notes : [{ code: 'check_generic' }]);
   if (cov >= 0.6 && corrob === 0)
@@ -314,11 +371,30 @@ export async function checkReference(raw, opts = {}) {
     //    then doi.org content negotiation (DataCite, mEDRA, JaLC, ...). Only a
     //    DOI that NO registrar knows is treated as fabricated.
     if (doi) {
-      let item = await crossrefByDOI(doi, mailto, signal).catch(() => null);
-      if (!item) item = await resolveDoiOrg(doi, signal).catch(() => null);
-      if (!item) return mk('notfound', 'Fake DOI', raw, null, 0, [{ code: 'fakedoi', doi }]);
+      let item = null, hadError = false;
+      try { item = await crossrefByDOI(doi, mailto, signal); }
+      catch (e) { if (e.name === 'AbortError') throw e; hadError = true; }
+      if (!item) {
+        try { item = await resolveDoiOrg(doi, signal); }
+        catch (e) { if (e.name === 'AbortError') throw e; hadError = true; }
+      }
+      if (!item) {
+        // No registrar returned the DOI. A clean 404 from every registrar means
+        // the DOI is fabricated; a network error means we simply could not check,
+        // and must NOT be reported as fabrication.
+        return hadError
+          ? mk('error', 'Error', raw, null, 0, [{ code: 'error' }])
+          : mk('notfound', 'Fake DOI', raw, null, 0, [{ code: 'fakedoi', doi }]);
+      }
       const cov = titleCoverage(item, inputTokenSet);
+      // The DOI is an exact identifier, so trust a retraction or concern on the
+      // resolved record regardless of how much of the title the user typed.
+      const rin = retractionInfo(item);
+      if (rin.retracted) return mk('retracted', 'Retracted', raw, matchedView(item), Math.max(cov, 0.9), [{ code: 'retracted' }]);
+      if (rin.concern) return mk('check', 'Expression of Concern', raw, matchedView(item), cov, [{ code: 'concern' }]);
       const r = buildResult(raw, item, cov, inputNorm, inputYear);
+      // A resolved DOI proves the paper exists: never label it fabricated.
+      if (r.status === 'notfound') return mk('weak', 'Weak match', raw, matchedView(item), cov, [{ code: 'doimismatch' }]);
       if (cov < 0.35) r.notes.unshift({ code: 'doimismatch' });
       return r;
     }
@@ -328,13 +404,25 @@ export async function checkReference(raw, opts = {}) {
     //    Federation is what keeps real-but-obscure references (books, datasets,
     //    theses, preprints, regional journals) from being flagged as fabricated:
     //    we only say "not found" when EVERY source misses.
-    const [crItems, oaItems, olItems] = await Promise.all([
-      crossrefQuery(raw, mailto, signal).catch(() => []),
-      openalexQuery(raw, mailto, signal).catch(() => []),
-      openlibraryQuery(raw, signal).catch(() => []),
+    const settle = async (p) => {
+      try { return { ok: true, items: await p }; }
+      catch (e) { if (e.name === 'AbortError') throw e; return { ok: false, items: [] }; }
+    };
+    const settled = await Promise.all([
+      settle(crossrefQuery(raw, mailto, signal)),
+      settle(openalexQuery(raw, mailto, signal)),
+      settle(openlibraryQuery(raw, signal)),
     ]);
-    const items = [...crItems, ...oaItems, ...olItems];
-    if (!items.length) return mk('notfound', 'No match', raw, null, 0, [{ code: 'notfound' }]);
+    const anyOk = settled.some(s => s.ok);
+    const items = settled.flatMap(s => s.items);
+    if (!items.length) {
+      // No matches anywhere. If at least one source actually answered, that is a
+      // genuine "not found". If EVERY source failed (offline, CORS, rate limit),
+      // we could not verify and must say so instead of crying fabrication.
+      return anyOk
+        ? mk('notfound', 'No match', raw, null, 0, [{ code: 'notfound' }])
+        : mk('error', 'Error', raw, null, 0, [{ code: 'error' }]);
+    }
 
     let best = null, bestScore = -1, bestCov = 0;
     for (const it of items) {

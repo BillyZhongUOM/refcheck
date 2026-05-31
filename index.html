@@ -199,7 +199,7 @@
     </section>
 
     <section class="card panel">
-      <textarea id="input" data-i18n-ph="placeholder" aria-label="References"></textarea>
+      <textarea id="input" data-i18n-ph="placeholder" aria-label="References" dir="auto"></textarea>
       <div class="row">
         <button class="btn-primary" id="run" data-i18n="btn_check">Check references</button>
         <button class="btn-ghost" id="example" data-i18n="btn_example">Load example</button>
@@ -303,7 +303,7 @@ function pendingCard(i, raw){
   el.className = 'res s-pending'; el.id = 'res-' + i; el.style.setProperty('--i', i);
   el.innerHTML = `<div class="res-head">
       <span class="badge b-pending"><span class="btn-spin" style="border-color:rgba(0,0,0,.18);border-top-color:var(--grey)"></span></span>
-      <div class="res-in"><span class="res-num">${i+1}.</span>${esc(raw)}</div>
+      <div class="res-in" dir="auto"><span class="res-num">${i+1}.</span>${esc(raw)}</div>
     </div>
     <div class="skel" style="width:70%; margin-top:11px"></div>`;
   return el;
@@ -316,13 +316,13 @@ function renderResult(i, raw, r){
   const cls = (r.status==='weak') ? 'weak' : r.status;
   let html = `<div class="res-head">
       <span class="badge b-${cls}">${svg(STATUS_ICON[r.status]||'alert')}${esc(L('s_'+r.status))}</span>
-      <div class="res-in"><span class="res-num">${i+1}.</span>${esc(raw)}</div>
+      <div class="res-in" dir="auto"><span class="res-num">${i+1}.</span>${esc(raw)}</div>
     </div>`;
   if (r.matched){
     const m = r.matched;
     const meta = [m.authors, m.journal, m.year].filter(Boolean).join('  ·  ');
     const doi = m.doi ? `<div class="doi"><a href="https://doi.org/${esc(m.doi)}" target="_blank" rel="noopener">doi.org/${esc(m.doi)}</a></div>` : '';
-    html += `<div class="matched">
+    html += `<div class="matched" dir="auto">
         <div class="mt">${esc(m.title)}</div>
         <div>${esc(meta)}</div>${doi}
       </div>`;
@@ -344,10 +344,13 @@ function renderSummary(rs){
   }).join('');
 
   const flagged = c.retracted + c.notfound;
-  let key = flagged > 0 ? 'v_flagged' : (c.check + c.weak > 0 ? 'v_metadata' : 'v_allpass');
-  const icon = flagged > 0 ? 'warn' : 'check';
-  let text = L(key);
-  if (c.error > 0) text += ' ' + L('v_error_suffix');
+  let key, icon;
+  if (flagged > 0) { key = 'v_flagged'; icon = 'warn'; }
+  else if (c.check + c.weak > 0) { key = 'v_metadata'; icon = 'check'; }
+  else if (c.verified > 0) { key = 'v_allpass'; icon = 'check'; }
+  else { key = null; icon = 'alert'; }            // nothing classified, only errors
+  let text = key ? L(key) : '';
+  if (c.error > 0) text = text ? (text + ' ' + L('v_error_suffix')) : L('v_error_suffix');
   $('verdict').innerHTML = svg(icon) + `<span>${esc(text)}</span>`;
   summary.hidden = false;
 }
