@@ -156,6 +156,31 @@ function normalizeOpenAlex(w) {
   };
 }
 
+// Open Library: ~40M book editions. Fills the non-DOI book and humanities gap
+// that journal indexes miss. Competes in the same composite scoring, so it only
+// wins when a real book genuinely matches and loses for journal articles.
+async function openlibraryQuery(raw, signal) {
+  const url = `https://openlibrary.org/search.json?limit=5&fields=title,author_name,first_publish_year,publisher&q=${encodeURIComponent(raw)}`;
+  const { data } = await fetchJSON(url, signal);
+  return ((data && data.docs) || []).map(normalizeOpenLibrary);
+}
+
+function normalizeOpenLibrary(d) {
+  const authors = (d.author_name || []).slice(0, 5).map(dn => {
+    const parts = String(dn).trim().split(/\s+/);
+    return parts.length > 1 ? { family: parts[parts.length - 1], given: parts.slice(0, -1).join(' ') } : { family: dn };
+  });
+  return {
+    title: [stripTags(d.title || '')],
+    author: authors,
+    'container-title': [(d.publisher && d.publisher[0]) || ''],
+    issued: { 'date-parts': [[d.first_publish_year].filter(Boolean)] },
+    DOI: null,
+    type: 'book',
+    _src: 'openlibrary',
+  };
+}
+
 // Registrar-agnostic DOI resolution via doi.org content negotiation (CSL JSON).
 // Resolves Crossref, DataCite, mEDRA, JaLC, etc. so a valid non-Crossref DOI is
 // not mistaken for a fabricated one.
@@ -303,11 +328,12 @@ export async function checkReference(raw, opts = {}) {
     //    Federation is what keeps real-but-obscure references (books, datasets,
     //    theses, preprints, regional journals) from being flagged as fabricated:
     //    we only say "not found" when EVERY source misses.
-    const [crItems, oaItems] = await Promise.all([
+    const [crItems, oaItems, olItems] = await Promise.all([
       crossrefQuery(raw, mailto, signal).catch(() => []),
       openalexQuery(raw, mailto, signal).catch(() => []),
+      openlibraryQuery(raw, signal).catch(() => []),
     ]);
-    const items = [...crItems, ...oaItems];
+    const items = [...crItems, ...oaItems, ...olItems];
     if (!items.length) return mk('notfound', 'No match', raw, null, 0, [{ code: 'notfound' }]);
 
     let best = null, bestScore = -1, bestCov = 0;
