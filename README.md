@@ -53,15 +53,19 @@ node test_engine.mjs             # run the engine smoke test
 
 ---
 
-## Deploy (free tier, GitHub Pages)
+## Deploy — LIVE
 
-This is a static site, so GitHub Pages serves it for free — same pattern as `postop-pe-dashboard` (see `.claude/rules/deployment-repos.md`).
+- **Live URL:** https://billyzhonguom.github.io/refcheck/
+- **Repo:** https://github.com/BillyZhongUOM/refcheck (GitHub Pages, `main` / root)
 
-1. Create a public repo (e.g. `refcheck`) and push `index.html` + `engine.js`.
-2. Settings → Pages → deploy from `main` / root.
-3. Live at `https://<user>.github.io/refcheck/` within 1–3 min.
+This folder is **both the dev copy and the source of the deployment** — there is no separate mirror repo. To update the live site:
 
-Before going public, set `MAILTO` in `index.html` to a real contact address (Crossref's "polite pool" gives faster, more reliable service).
+```bash
+# from this folder, after editing index.html / engine.js
+git add -A && git commit -m "..." && git push    # Pages auto-rebuilds in 1–3 min
+```
+
+`notes/` is git-ignored, so the internal product plan never ships to the public repo. Optionally set `MAILTO` in `index.html` to a real contact address — Crossref's "polite pool" then gives faster, more reliable service.
 
 ---
 
