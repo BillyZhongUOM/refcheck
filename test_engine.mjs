@@ -23,7 +23,7 @@ for (let i = 0; i < refs.length; i++) {
   console.log(`    input : ${refs[i].slice(0, 70)}...`);
   if (r.matched) console.log(`    match : ${r.matched.title.slice(0, 70)} | ${r.matched.journal} ${r.matched.year} | doi:${r.matched.doi}`);
   console.log(`    conf  : ${r.confidence}`);
-  if (r.notes.length) console.log(`    notes : ${r.notes.join(' / ')}`);
+  if (r.notes.length) console.log(`    notes : ${r.notes.map(n => n.code + (n.you ? `(${n.you}→${n.record})` : n.authors ? `(${n.authors})` : '')).join(' / ')}`);
   console.log('');
   await new Promise(res => setTimeout(res, 300)); // be polite to the API
 }

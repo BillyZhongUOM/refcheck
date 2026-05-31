@@ -1,5 +1,5 @@
 // RefCheck verification engine.
-// Pure ES module — runs unchanged in the browser (<script type="module">)
+// Pure ES module that runs unchanged in the browser (<script type="module">)
 // and in Node 18+ (both expose a global `fetch`).
 //
 // Public API:
@@ -7,8 +7,12 @@
 //   checkReference(raw, opts)        -> Promise<Result>
 //
 // A Result looks like:
-//   { status, label, input, confidence, notes:[], matched:{title,authors,journal,year,doi}|null }
+//   { status, label, input, confidence, notes:[{code,...params}], matched:{...}|null }
 // status ∈ 'verified' | 'check' | 'weak' | 'notfound' | 'retracted' | 'error'
+//
+// `notes` are language-neutral CODES (with params) so the UI can render them in
+// any language. The optional `label` is English, for Node tests only; the UI
+// derives its label from `status` via the i18n layer and ignores it.
 
 const CROSSREF = 'https://api.crossref.org/works';
 
@@ -31,7 +35,6 @@ function significantTokens(s) {
 function extractYear(s) {
   const m = (s || '').match(/\b(18|19|20)\d{2}\b/g);
   if (!m) return null;
-  // A citation's year is almost always the latest plausible 4-digit number.
   const years = m.map(Number).filter(y => y <= 2100);
   return years.length ? Math.max(...years) : null;
 }
@@ -39,7 +42,7 @@ function extractYear(s) {
 function extractDOI(s) {
   const m = (s || '').match(/10\.\d{4,9}\/[^\s"<>)]+/i);
   if (!m) return null;
-  return m[0].replace(/[.,;)]+$/, ''); // strip trailing punctuation
+  return m[0].replace(/[.,;)]+$/, '');
 }
 
 // ---------------------------------------------------------- reference splitter
@@ -48,13 +51,11 @@ export function splitReferences(text) {
   if (!raw) return [];
 
   const lines = raw.split('\n');
-  // Count lines that begin with a citation marker like "1." "[12]" "(3)" "1)"
   const markerRe = /^\s*(\[\d{1,3}\]|\(?\d{1,3}[.)])\s+/;
   const markered = lines.filter(l => markerRe.test(l)).length;
 
   let parts;
   if (markered >= 2) {
-    // Numbered list — a new reference starts at each marker; fold wrapped lines in.
     parts = [];
     let cur = '';
     for (const line of lines) {
@@ -67,14 +68,14 @@ export function splitReferences(text) {
     }
     if (cur.trim()) parts.push(cur);
   } else if (raw.includes('\n\n')) {
-    parts = raw.split(/\n\s*\n/);        // blank-line separated paragraphs
+    parts = raw.split(/\n\s*\n/);
   } else {
-    parts = lines;                       // one reference per line
+    parts = lines;
   }
 
   return parts
     .map(p => p.replace(markerRe, '').replace(/\s+/g, ' ').trim())
-    .filter(p => p.length > 10);         // drop stray fragments
+    .filter(p => p.length > 10);
 }
 
 // --------------------------------------------------------------- crossref I/O
@@ -86,9 +87,7 @@ function delay(ms, signal) {
 }
 
 // Fetch JSON with retry + backoff. Transient failures (network drop, 429 rate
-// limit, 5xx) are retried rather than surfaced as an error to the user — a
-// public tool firing many concurrent requests will hit these occasionally.
-// Returns { status, data } so callers can distinguish a real 404 from a retry.
+// limit, 5xx) are retried rather than surfaced as an error to the user.
 async function fetchJSON(url, signal, tries = 3) {
   let lastErr;
   for (let attempt = 0; attempt < tries; attempt++) {
@@ -122,14 +121,11 @@ async function crossrefByDOI(doi, mailto, signal) {
   let url = `${CROSSREF}/${encodeURIComponent(doi)}`;
   if (mailto) url += `?mailto=${encodeURIComponent(mailto)}`;
   const { status, data } = await fetchJSON(url, signal);
-  if (status === 404) return null;              // DOI genuinely does not exist
+  if (status === 404) return null;
   return (data && data.message) || null;
 }
 
 // ------------------------------------------------------------- scoring helpers
-// Fraction of the matched title's significant words that appear in the user's
-// input string. A correct citation contains its title -> high coverage.
-// A fabricated citation makes Crossref return an unrelated paper -> low coverage.
 function titleCoverage(item, inputTokenSet) {
   const title = item.title && item.title[0];
   const tt = [...new Set(significantTokens(title))];
@@ -161,12 +157,12 @@ function retractionInfo(item) {
   for (const u of ub) {
     const t = (u.type || '').toLowerCase();
     const l = (u.label || '').toLowerCase();
-    if (t.includes('retraction') || l.includes('retract')) return { retracted: true, label: 'Retracted' };
-    if (t.includes('concern') || l.includes('concern')) return { concern: true, label: 'Expression of Concern' };
+    if (t.includes('retraction') || l.includes('retract')) return { retracted: true };
+    if (t.includes('concern') || l.includes('concern')) return { concern: true };
   }
   const title = ((item.title && item.title[0]) || '').trim();
-  if (/^retracted[:\s]/i.test(title)) return { retracted: true, label: 'Retracted (title-flagged)' };
-  if (/expression of concern/i.test(title)) return { concern: true, label: 'Expression of Concern' };
+  if (/^retracted[:\s]/i.test(title)) return { retracted: true };
+  if (/expression of concern/i.test(title)) return { concern: true };
   return {};
 }
 
@@ -203,28 +199,26 @@ function buildResult(raw, item, cov, inputNorm, inputYear) {
   const yearCorrob = !!(inputYear && myear && Math.abs(inputYear - myear) <= 1);
   const yearConflict = !!(inputYear && myear && Math.abs(inputYear - myear) > 1);
 
-  if (yearConflict) notes.push(`Year mismatch: you wrote ${inputYear}, the record says ${myear}.`);
-  if (hasAuthors && !authorMatched) notes.push(`Cited authors don't match the record (${formatAuthors(item)}).`);
+  if (yearConflict) notes.push({ code: 'year', you: inputYear, record: myear });
+  if (hasAuthors && !authorMatched) notes.push({ code: 'authors', authors: formatAuthors(item) });
 
-  // Retraction / concern override — only trust it on a confident match.
+  // Retraction / concern override, only trusted on a confident match.
   if (rinfo.retracted && cov >= 0.5)
-    return mk('retracted', 'Retracted', raw, matched, cov, ['This paper has been RETRACTED. Do not cite it as valid evidence.', ...notes]);
+    return mk('retracted', 'Retracted', raw, matched, cov, [{ code: 'retracted' }, ...notes]);
   if (rinfo.concern && cov >= 0.5)
-    return mk('check', 'Expression of Concern', raw, matched, cov, ['An Expression of Concern has been issued for this paper.', ...notes]);
+    return mk('check', 'Expression of Concern', raw, matched, cov, [{ code: 'concern' }, ...notes]);
 
   const corrob = (authorMatched ? 1 : 0) + (yearCorrob ? 1 : 0);
 
   if (cov >= 0.6 && authorMatched && (yearCorrob || !yearGiven))
     return mk('verified', 'Verified', raw, matched, cov, notes);
   if (cov >= 0.6 && corrob >= 1)
-    return mk('check', 'Check metadata', raw, matched, cov, notes.length ? notes : ['Paper found; verify the details against the record.']);
+    return mk('check', 'Check metadata', raw, matched, cov, notes.length ? notes : [{ code: 'check_generic' }]);
   if (cov >= 0.6 && corrob === 0)
-    return mk('weak', 'Unconfirmed', raw, matched, cov,
-      ['A record with a very similar title exists, but neither the authors nor the year you cited match it. This may be the wrong record or a fabricated citation — verify carefully.', ...notes]);
+    return mk('weak', 'Unconfirmed', raw, matched, cov, [{ code: 'unconfirmed' }, ...notes]);
   if (cov >= 0.4 && corrob >= 1)
-    return mk('weak', 'Weak match', raw, matched, cov, ['Only a partial match. Verify this reference manually.', ...notes]);
-  return mk('notfound', 'No match', raw, null, cov,
-    ['No matching record found in Crossref. This reference may be fabricated or badly mis-cited.']);
+    return mk('weak', 'Weak match', raw, matched, cov, [{ code: 'weak' }, ...notes]);
+  return mk('notfound', 'No match', raw, null, cov, [{ code: 'notfound' }]);
 }
 
 function mk(status, label, input, matched, confidence, notes) {
@@ -243,14 +237,10 @@ export async function checkReference(raw, opts = {}) {
     // 1) If the citation carries a DOI, that is the strongest signal.
     if (doi) {
       const item = await crossrefByDOI(doi, mailto, signal);
-      if (!item) {
-        return mk('notfound', 'Fake DOI', raw, null, 0,
-          [`The DOI ${doi} does not exist in Crossref. A non-existent DOI is a strong sign of a fabricated reference.`]);
-      }
+      if (!item) return mk('notfound', 'Fake DOI', raw, null, 0, [{ code: 'fakedoi', doi }]);
       const cov = titleCoverage(item, inputTokenSet);
       const r = buildResult(raw, item, cov, inputNorm, inputYear);
-      if (cov < 0.35)
-        r.notes.unshift('The DOI resolves, but to a paper whose title does not match what you cited (possible DOI mix-up).');
+      if (cov < 0.35) r.notes.unshift({ code: 'doimismatch' });
       return r;
     }
 
@@ -258,9 +248,7 @@ export async function checkReference(raw, opts = {}) {
     //    composite of title overlap + author corroboration + year agreement,
     //    not title overlap alone (same-title letters/replies otherwise win).
     const items = await crossrefQuery(raw, mailto, signal);
-    if (!items.length)
-      return mk('notfound', 'No match', raw, null, 0,
-        ['No matching record found in Crossref. This reference may be fabricated or badly mis-cited.']);
+    if (!items.length) return mk('notfound', 'No match', raw, null, 0, [{ code: 'notfound' }]);
 
     let best = null, bestScore = -1, bestCov = 0;
     for (const it of items) {
@@ -274,8 +262,7 @@ export async function checkReference(raw, opts = {}) {
     }
 
     // For a confident match, re-fetch the canonical record by DOI so we see
-    // authoritative relation metadata (retractions, expressions of concern)
-    // that the bibliographic search response sometimes omits.
+    // authoritative relation metadata (retractions, expressions of concern).
     let item = best, cov = bestCov;
     if (cov >= 0.6 && authorInInput(item, inputNorm) && item.DOI) {
       try {
@@ -286,11 +273,10 @@ export async function checkReference(raw, opts = {}) {
     return buildResult(raw, item, cov, inputNorm, inputYear);
   } catch (err) {
     if (err.name === 'AbortError') throw err;
-    return mk('error', 'Error', raw, null, 0, [`Could not check this reference (${err.message}). Try again.`]);
+    return mk('error', 'Error', raw, null, 0, [{ code: 'error' }]);
   }
 }
 
-// Convenience for callers that want everything in one go (Node tests, etc.).
 export async function checkAll(text, opts = {}) {
   const refs = splitReferences(text);
   const out = [];

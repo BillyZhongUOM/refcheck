@@ -33,7 +33,8 @@ Two files, no build step, no backend:
   - If a reference contains a DOI, looks it up directly — a 404 is a strong "fabricated" signal.
   - Otherwise queries Crossref `query.bibliographic`, then picks the best record by a **composite score** = title-word coverage + author corroboration + year agreement (not title overlap alone — that lets same-title letters/replies win).
   - For a confident match it re-fetches the canonical record by DOI to read authoritative retraction metadata (`updated-by`), with a title-prefix (`RETRACTED:`) fallback.
-- **`index.html`** — a single-page UI that imports `engine.js`, runs checks with a concurrency pool of 4, and renders results progressively.
+- **`index.html`** — a single-page UI that imports `engine.js` and `i18n.js`, runs checks with a concurrency pool, and renders results progressively. Editorial design (serif display, warm-monochrome surfaces, one navy accent, pastel semantic statuses, inline SVG icons, subtle motion) built to read as a serious academic tool, applying the [taste-skill](https://github.com/leonxlnx/taste-skill) anti-slop frontend guidelines.
+- **`i18n.js`** — the language layer: 12 locales (English, 简体中文, 繁體中文, Español, हिन्दी, العربية, Português, Français, Русский, 日本語, Deutsch, 한국어), full right-to-left support for Arabic, browser-language auto-detection, and a saved preference. Engine notes are language-neutral codes, so a single verification result renders in any language and switches live without re-checking.
 
 Because everything runs client-side against a free public API, **hosting cost is essentially zero** and it scales with the user's own browser. That is what makes a free tier sustainable.
 

@@ -1,207 +1,335 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>RefCheck — Spot fabricated &amp; retracted citations in seconds</title>
+<title>RefCheck: verify fabricated and retracted citations</title>
 <meta name="description" content="Paste a reference list and instantly find fabricated, retracted, or mis-cited papers. Free, runs in your browser, powered by Crossref." />
+<meta name="theme-color" content="#fbfbfa" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="RefCheck: verify fabricated and retracted citations" />
+<meta property="og:description" content="Paste a reference list. RefCheck flags fabricated, retracted, or mis-cited papers in seconds. Free, in your browser." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%231b3a5b'/%3E%3Cpath d='M6 12.5l3.6 3.6L18 8' fill='none' stroke='white' stroke-width='2.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 <style>
   :root{
-    --bg:#f6f7fb; --card:#ffffff; --ink:#1f2430; --muted:#6b7280; --line:#e6e8ef;
-    --accent:#4f46e5; --accent-d:#4338ca;
-    --green:#15803d; --green-bg:#ecfdf3; --green-line:#abefc6;
-    --amber:#b45309; --amber-bg:#fffaeb; --amber-line:#fde68a;
-    --red:#b42318; --red-bg:#fef3f2; --red-line:#fecdca;
-    --purple:#6d28d9; --purple-bg:#f5f3ff; --purple-line:#ddd6fe;
-    --grey:#475467; --grey-bg:#f2f4f7; --grey-line:#e4e7ec;
+    --bg:#fbfbfa; --surface:#ffffff; --surface-2:#f8f8f6;
+    --ink:#2b2926; --muted:#75736e; --faint:#86847d;
+    --line:#e9e8e4; --line-2:rgba(0,0,0,.06);
+    --accent:#1b3a5b; --accent-d:#142c45;
+    --r-card:14px; --r-inner:10px; --r-btn:8px;
+    --shadow:0 1px 2px rgba(40,40,35,.04);
+    --shadow-h:0 4px 18px rgba(40,40,35,.07);
+    --ease:cubic-bezier(.16,1,.3,1);
+    --green:#346538; --green-bg:#edf3ec; --green-line:#cfe3cd;
+    --amber:#8a5a00; --amber-bg:#fbf3db; --amber-line:#efe1b6;
+    --red:#9f2f2d;   --red-bg:#fdebec;   --red-line:#f4d2d2;
+    --violet:#5b3aa6;--violet-bg:#f3f0fa; --violet-line:#ddd3f0;
+    --grey:#6b6862;  --grey-bg:#f1f1ef;  --grey-line:#e4e3df;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue","PingFang SC","Hiragino Sans","Microsoft YaHei","Malgun Gothic","Noto Sans Arabic",Arial,sans-serif;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,"Times New Roman",serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
   }
   *{box-sizing:border-box}
   html,body{margin:0}
   body{
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    background:var(--bg); color:var(--ink); line-height:1.55; -webkit-font-smoothing:antialiased;
+    font-family:var(--sans); background:var(--bg); color:var(--ink);
+    line-height:1.55; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    font-variant-numeric:tabular-nums;
+  }
+  /* faint depth: a single warm light + a whisper of grain, both inert */
+  body::before{
+    content:""; position:fixed; inset:0; z-index:-2; pointer-events:none;
+    background:radial-gradient(1100px 540px at 50% -8%, rgba(27,58,91,.045), transparent 70%);
+  }
+  body::after{
+    content:""; position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.025;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
   a{color:var(--accent); text-decoration:none}
-  a:hover{text-decoration:underline}
-  .wrap{max-width:880px; margin:0 auto; padding:32px 20px 80px}
-  header.hero{text-align:center; padding:18px 0 26px}
-  .brand{display:inline-flex; align-items:center; gap:10px; font-weight:700; font-size:15px; color:var(--accent); letter-spacing:.2px}
-  .brand .dot{width:10px;height:10px;border-radius:3px;background:var(--accent);display:inline-block;transform:rotate(45deg)}
-  h1{font-size:32px; line-height:1.2; margin:14px 0 10px; letter-spacing:-.5px}
-  .sub{color:var(--muted); font-size:15.5px; max-width:660px; margin:0 auto}
-  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 1px 2px rgba(16,24,40,.04); padding:18px}
-  .panel{margin-top:8px}
-  textarea{
-    width:100%; min-height:190px; resize:vertical; border:1px solid var(--line); border-radius:12px;
-    padding:14px 15px; font-size:14px; line-height:1.6; color:var(--ink); background:#fcfcfe;
-    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  a:hover{text-decoration:underline; text-underline-offset:2px}
+  svg{display:block}
+  .ic{width:1em; height:1em; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; fill:none}
+
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px}
+
+  .skip{position:absolute; inset-inline-start:-9999px; top:8px; background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; z-index:10}
+  .skip:focus{inset-inline-start:12px}
+
+  .wrap{max-width:920px; margin:0 auto; padding-inline:20px}
+
+  /* top bar */
+  .topbar{display:flex; align-items:center; justify-content:space-between; gap:16px; padding-block:18px 4px}
+  .brand{display:inline-flex; align-items:center; gap:9px; font-weight:650; font-size:16px; letter-spacing:-.01em; color:var(--ink)}
+  .brand .mark{width:24px; height:24px; border-radius:7px; flex:none}
+  .langwrap{display:inline-flex; align-items:center; gap:7px; color:var(--muted)}
+  .langwrap .ic{width:16px; height:16px}
+  select#lang{
+    font:inherit; font-size:13.5px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--line); border-radius:8px; padding:7px 30px 7px 11px; cursor:pointer;
+    -webkit-appearance:none; appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2375736e' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 9px center; background-size:14px;
   }
-  textarea:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(79,70,229,.12)}
-  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px}
+  [dir="rtl"] select#lang{padding:7px 11px 7px 30px; background-position:left 9px center}
+  select#lang:hover{border-color:#d8d7d2}
+
+  /* hero */
+  .hero{text-align:center; padding-block:34px 26px}
+  h1{
+    font-family:var(--serif); font-weight:600; font-size:clamp(27px,4vw,40px);
+    line-height:1.16; letter-spacing:-.02em; margin:0 auto; max-width:30ch;
+    text-wrap:balance; color:#211f1c;
+  }
+  .sub{color:var(--muted); font-size:16px; line-height:1.6; max-width:60ch; margin:14px auto 0; text-wrap:pretty}
+
+  /* card */
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow)}
+  .panel{padding:18px}
+  textarea{
+    width:100%; min-height:188px; resize:vertical; display:block;
+    border:1px solid var(--line); border-radius:var(--r-inner); background:var(--surface-2);
+    padding:14px 15px; font-family:var(--mono); font-size:13.5px; line-height:1.65; color:var(--ink);
+    transition:border-color .18s, box-shadow .18s;
+  }
+  textarea::placeholder{color:var(--faint)}
+  textarea:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(27,58,91,.1); background:var(--surface)}
+
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:13px}
   .spacer{flex:1}
-  button{font:inherit; cursor:pointer; border-radius:10px; border:1px solid transparent; padding:10px 16px; font-weight:600; font-size:14px}
-  .btn-primary{background:var(--accent); color:#fff}
-  .btn-primary:hover{background:var(--accent-d)}
-  .btn-primary:disabled{opacity:.55; cursor:default}
-  .btn-ghost{background:#fff; color:var(--ink); border-color:var(--line)}
-  .btn-ghost:hover{background:#f8f9fc}
-  .hint{font-size:12.5px; color:var(--muted)}
+  .hint{font-size:13px; color:var(--muted)}
+  button{font:inherit; cursor:pointer; border:1px solid transparent; border-radius:var(--r-btn); padding:10px 16px; font-weight:600; font-size:14px; transition:background .18s, border-color .18s, transform .12s, box-shadow .18s; display:inline-flex; align-items:center; gap:8px}
+  button:active{transform:translateY(1px)}
+  .btn-primary{background:var(--ink); color:#fff}
+  .btn-primary:hover{background:#3c3933}
+  .btn-primary:disabled{opacity:.5; cursor:default; transform:none}
+  .btn-ghost{background:var(--surface); color:var(--ink); border-color:var(--line)}
+  .btn-ghost:hover{background:var(--surface-2); border-color:#d8d7d2}
+  .btn-spin{width:14px; height:14px; border:2px solid rgba(255,255,255,.4); border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  .inline-error{margin:12px 2px 0; color:var(--red); font-size:13.5px; display:flex; align-items:center; gap:7px}
+  .inline-error .ic{width:16px; height:16px; flex:none}
+
   /* summary */
-  .summary{display:none; margin-top:18px}
-  .verdict{font-size:15px; font-weight:600; margin-bottom:12px}
-  .chips{display:flex; gap:8px; flex-wrap:wrap}
-  .chip{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:5px 10px; border-radius:999px; border:1px solid}
-  .chip b{font-weight:700}
-  .c-verified{color:var(--green); background:var(--green-bg); border-color:var(--green-line)}
-  .c-check{color:var(--amber); background:var(--amber-bg); border-color:var(--amber-line)}
-  .c-weak{color:var(--amber); background:var(--amber-bg); border-color:var(--amber-line)}
-  .c-notfound{color:var(--red); background:var(--red-bg); border-color:var(--red-line)}
-  .c-retracted{color:var(--purple); background:var(--purple-bg); border-color:var(--purple-line)}
-  .c-error{color:var(--grey); background:var(--grey-bg); border-color:var(--grey-line)}
+  .summary{margin-top:20px}
+  .verdict{display:flex; align-items:flex-start; gap:9px; font-size:15px; font-weight:600; line-height:1.45; color:var(--ink)}
+  .verdict .ic{width:19px; height:19px; flex:none; margin-top:1px}
+  .chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:13px}
+  .chip{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:5px 11px; border-radius:999px; border:1px solid}
+  .chip .ic{width:14px; height:14px}
+  .chip b{font-weight:700; font-variant-numeric:tabular-nums}
+
   /* results */
-  .results{margin-top:16px; display:flex; flex-direction:column; gap:10px}
-  .res{border:1px solid var(--line); border-left-width:4px; border-radius:12px; padding:12px 14px; background:#fff}
-  .res.s-verified{border-left-color:var(--green)}
-  .res.s-check,.res.s-weak{border-left-color:var(--amber)}
-  .res.s-notfound{border-left-color:var(--red)}
-  .res.s-retracted{border-left-color:var(--purple)}
-  .res.s-error{border-left-color:var(--grey)}
-  .res.s-pending{border-left-color:var(--line)}
-  .res-head{display:flex; align-items:flex-start; gap:10px}
-  .badge{flex:none; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:7px; border:1px solid; white-space:nowrap}
+  .results{margin-top:16px; display:flex; flex-direction:column; gap:11px}
+  .res{
+    background:var(--surface); border:1px solid var(--line); border-inline-start-width:3px;
+    border-radius:var(--r-inner); padding:13px 15px; transition:box-shadow .18s, transform .18s;
+    animation:rise .5s var(--ease) both; animation-delay:calc(var(--i,0) * 55ms);
+  }
+  .res:hover{box-shadow:var(--shadow-h); transform:translateY(-1px)}
+  @keyframes rise{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+  .res.s-verified{border-inline-start-color:var(--green)}
+  .res.s-check,.res.s-weak{border-inline-start-color:var(--amber)}
+  .res.s-notfound{border-inline-start-color:var(--red)}
+  .res.s-retracted{border-inline-start-color:var(--violet)}
+  .res.s-error{border-inline-start-color:var(--grey)}
+  .res.s-pending{border-inline-start-color:var(--line)}
+  .res-head{display:flex; align-items:flex-start; gap:11px}
+  .badge{flex:none; display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:650; padding:3px 9px; border-radius:999px; border:1px solid; white-space:nowrap}
+  .badge .ic{width:13px; height:13px}
   .b-verified{color:var(--green); background:var(--green-bg); border-color:var(--green-line)}
   .b-check,.b-weak{color:var(--amber); background:var(--amber-bg); border-color:var(--amber-line)}
   .b-notfound{color:var(--red); background:var(--red-bg); border-color:var(--red-line)}
-  .b-retracted{color:var(--purple); background:var(--purple-bg); border-color:var(--purple-line)}
-  .b-error{color:var(--grey); background:var(--grey-bg); border-color:var(--grey-line)}
-  .b-pending{color:var(--grey); background:var(--grey-bg); border-color:var(--grey-line)}
-  .res-in{font-size:13px; color:var(--ink); word-break:break-word}
-  .res-num{color:var(--muted); font-weight:700; margin-right:4px}
-  .matched{margin-top:8px; font-size:12.5px; color:var(--muted); background:#fafbff; border:1px solid var(--line); border-radius:9px; padding:8px 10px}
-  .matched .mt{color:var(--ink); font-weight:600}
-  .notes{margin:8px 0 0; padding-left:0; list-style:none; display:flex; flex-direction:column; gap:4px}
-  .notes li{font-size:12.5px; color:var(--grey); padding-left:16px; position:relative}
-  .notes li::before{content:"›"; position:absolute; left:3px; color:var(--muted)}
+  .b-retracted{color:var(--violet); background:var(--violet-bg); border-color:var(--violet-line)}
+  .b-error,.b-pending{color:var(--grey); background:var(--grey-bg); border-color:var(--grey-line)}
+  .res-in{font-size:13px; color:var(--ink); word-break:break-word; line-height:1.5}
+  .res-num{color:var(--faint); font-weight:700; margin-inline-end:4px}
+  .matched{margin-top:9px; font-size:12.5px; color:var(--muted); background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:9px 11px; line-height:1.55}
+  .matched .mt{color:var(--ink); font-weight:600; margin-bottom:1px}
+  .matched .doi{margin-top:3px; font-family:var(--mono); font-size:11.5px; word-break:break-all}
+  .notes{margin:9px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:5px}
+  .notes li{font-size:12.5px; color:var(--grey); padding-inline-start:18px; position:relative; line-height:1.5}
+  .notes li .ic{width:13px; height:13px; position:absolute; inset-inline-start:1px; top:2px}
   .notes li.warn{color:var(--red)}
-  .spin{display:inline-block; width:12px; height:12px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:sp .7s linear infinite; vertical-align:-1px}
-  @keyframes sp{to{transform:rotate(360deg)}}
-  /* footer */
-  footer{margin-top:34px; text-align:center; color:var(--muted); font-size:12.5px; line-height:1.7}
-  .road{margin-top:24px; background:linear-gradient(180deg,#fff,#fbfbff); border:1px dashed var(--line); border-radius:14px; padding:16px 18px; text-align:center}
-  .road b{color:var(--ink)}
-  .privacy{margin-top:18px}
+  .notes li.warn .ic{color:var(--red)}
+
+  .skel{height:11px; border-radius:6px; background:linear-gradient(90deg,#efefec 25%,#f6f6f4 37%,#efefec 63%); background-size:400% 100%; animation:sh 1.3s ease infinite}
+  @keyframes sh{from{background-position:100% 0} to{background-position:-100% 0}}
+
+  /* roadmap + footer */
+  .road{margin-top:26px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-card); padding:16px 18px; color:var(--muted); font-size:13.5px; line-height:1.6; display:flex; gap:11px; align-items:flex-start}
+  .road .ic{width:18px; height:18px; flex:none; margin-top:2px; color:var(--accent)}
+  .road b{color:var(--ink); font-weight:650}
+  footer{margin-top:22px; padding-bottom:54px; color:var(--faint); font-size:12.5px; line-height:1.65}
+  footer .priv{display:flex; gap:8px; align-items:flex-start}
+  footer .priv .ic{width:15px; height:15px; flex:none; margin-top:2px}
+  footer .src{margin-top:9px}
+
+  @media (max-width:520px){
+    .res-head{flex-direction:column; gap:7px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .res{animation:none}
+    *{scroll-behavior:auto}
+  }
+  html{scroll-behavior:smooth}
 </style>
 </head>
 <body>
-<div class="wrap">
+<a class="skip" href="#main" data-i18n="skip">Skip to content</a>
 
-  <header class="hero">
-    <div class="brand"><span class="dot"></span> RefCheck</div>
-    <h1>Spot fabricated &amp; retracted citations in seconds</h1>
-    <p class="sub">Paste your reference list. RefCheck checks every citation against Crossref (150M+ scholarly records)
-      and flags the ones that are fabricated, retracted, or mis-cited. Free, and it runs entirely in your browser.</p>
+<div class="wrap">
+  <header>
+    <nav class="topbar" aria-label="Site">
+      <span class="brand">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="7" fill="#1b3a5b"/><path d="M6 12.5l3.6 3.6L18 8" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        RefCheck
+      </span>
+      <span class="langwrap">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.4 2.5 15.6 0 18M12 3c-2.5 2.4-2.5 15.6 0 18"/></svg>
+        <select id="lang" aria-label="Language"></select>
+      </span>
+    </nav>
   </header>
 
-  <section class="card panel">
-    <textarea id="input" placeholder="Paste your references here — one per line, or a whole numbered reference list.&#10;&#10;e.g.&#10;1. Smith J, Doe A. A study of something important. Journal of Things. 2020;12(3):45-60.&#10;2. ..."></textarea>
-    <div class="row">
-      <button class="btn-primary" id="run">Check references</button>
-      <button class="btn-ghost" id="example">Load example</button>
-      <button class="btn-ghost" id="clear">Clear</button>
-      <span class="spacer"></span>
-      <span class="hint" id="count">0 references</span>
-    </div>
-  </section>
+  <main id="main">
+    <section class="hero">
+      <h1 data-i18n="headline">Spot fabricated and retracted citations in seconds</h1>
+      <p class="sub" data-i18n="tagline">Paste a reference list. RefCheck checks each citation against Crossref and flags anything fabricated, retracted, or mis-cited.</p>
+    </section>
 
-  <section class="summary card" id="summary">
-    <div class="verdict" id="verdict"></div>
-    <div class="chips" id="chips"></div>
-  </section>
+    <section class="card panel">
+      <textarea id="input" data-i18n-ph="placeholder" aria-label="References"></textarea>
+      <div class="row">
+        <button class="btn-primary" id="run" data-i18n="btn_check">Check references</button>
+        <button class="btn-ghost" id="example" data-i18n="btn_example">Load example</button>
+        <button class="btn-ghost" id="clear" data-i18n="btn_clear">Clear</button>
+        <span class="spacer"></span>
+        <span class="hint" id="count">References: 0</span>
+      </div>
+      <p class="inline-error" id="err" role="alert" hidden></p>
+    </section>
 
-  <section class="results" id="results"></section>
+    <section class="summary" id="summary" hidden aria-live="polite">
+      <div class="verdict" id="verdict"></div>
+      <div class="chips" id="chips"></div>
+    </section>
 
-  <div class="road">
-    🚧 <b>This free checker is already useful on its own.</b> Coming next: drop in a whole PDF or Word manuscript and
-    RefCheck pulls out and checks the reference list automatically · a Word &amp; Google Docs add-in · a bulk API for journal editors.
-  </div>
+    <section class="results" id="results" aria-live="polite"></section>
+
+    <aside class="road">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5z"/></svg>
+      <span id="road" data-i18n="roadmap"></span>
+    </aside>
+  </main>
 
   <footer>
-    <div class="privacy">
-      🔒 The references you paste are sent only to <a href="https://www.crossref.org/" target="_blank" rel="noopener">Crossref</a>'s
-      public API for matching. They never touch a server we control, and nothing is stored.
+    <div class="priv">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      <span id="privacy" data-i18n="privacy"></span>
     </div>
-    <div style="margin-top:10px">Data source: Crossref REST API · Retraction signals from Crossref / Retraction Watch · Open MVP.</div>
+    <div class="src" id="source" data-i18n="source"></div>
   </footer>
-
 </div>
 
 <script type="module">
 import { splitReferences, checkReference } from './engine.js';
+import { LANGS, t, renderNote, detectLang, saveLang, dirOf } from './i18n.js';
 
-// Optional: a contact address puts you in Crossref's faster "polite pool".
-// Leave empty to use the public pool, or set your own address before deploying.
+// A real contact address moves you into Crossref's faster "polite pool".
+// Left empty for now (public pool); set before heavy traffic.
 const MAILTO = '';
 
 const $ = (id) => document.getElementById(id);
-const input = $('input'), results = $('results'), summary = $('summary');
+const input = $('input'), results = $('results'), summary = $('summary'), errBox = $('err');
 
-const LABELS = {
-  verified:  { txt:'Verified',        cls:'verified' },
-  check:     { txt:'Check metadata',  cls:'check' },
-  weak:      { txt:'Unconfirmed',     cls:'weak' },
-  notfound:  { txt:'Not found',       cls:'notfound' },
-  retracted: { txt:'RETRACTED',       cls:'retracted' },
-  error:     { txt:'Error',           cls:'error' },
+const state = { lang: detectLang(), refs: null, results: null, running: false };
+
+// ---- inline SVG icons (simple geometric marks, single stroke) -------------
+const ICON = {
+  check:    '<path d="M20 6 9 17l-5-5"/>',
+  info:     '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>',
+  warn:     '<path d="M12 4l9 16H3z"/><path d="M12 10v4"/><path d="M12 18h.01"/>',
+  x:        '<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>',
+  ban:      '<circle cx="12" cy="12" r="9"/><path d="M6.3 6.3l11.4 11.4"/>',
+  alert:    '<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>',
 };
+const STATUS_ICON = { verified:'check', check:'info', weak:'warn', notfound:'x', retracted:'ban', error:'alert' };
+const svg = (name, cls='ic') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[name]}</svg>`;
+
+function esc(s){ return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const L = (k, p) => t(state.lang, k, p);
+
+// ---- language selector -----------------------------------------------------
+function buildLangMenu(){
+  const sel = $('lang');
+  sel.innerHTML = LANGS.map(l => `<option value="${l.code}">${l.label}</option>`).join('');
+  sel.value = state.lang;
+  sel.addEventListener('change', () => { setLang(sel.value); });
+}
+function setLang(code){
+  state.lang = code;
+  saveLang(code);
+  document.documentElement.lang = code;
+  document.documentElement.dir = dirOf(code);
+  applyStatic();
+  if (state.results) { renderSummary(state.results); state.refs.forEach((raw,i)=>renderResult(i, raw, state.results[i])); }
+}
+function applyStatic(){
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = L(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = L(el.dataset.i18nPh); });
+  if (!state.running) $('run').textContent = L('btn_check');
+  updateCount();
+}
+
+// ---- input + counter -------------------------------------------------------
+function updateCount(){ $('count').textContent = L('count', { n: splitReferences(input.value).length }); }
+function clearError(){ errBox.hidden = true; }
+function showError(msg){ errBox.innerHTML = svg('alert') + `<span>${esc(msg)}</span>`; errBox.hidden = false; }
+
+input.addEventListener('input', () => { updateCount(); clearError(); });
 
 const EXAMPLE = `1. Watson JD, Crick FHC. Molecular structure of nucleic acids: a structure for deoxyribose nucleic acid. Nature. 1953;171(4356):737-738.
 2. Wakefield AJ, Murch SH, Anthony A, et al. Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children. Lancet. 1998;351(9103):637-641.
 3. Zhang L, Smith JR, Patel A. Quantum entanglement effects on photosynthetic efficiency in mammalian cortical neurons. Journal of Advanced Cellular Biophysics. 2021;14(3):221-238.
 4. Fisher RA. The correlation between relatives on the supposition of Mendelian inheritance. Nature. 1925;52:399-433.`;
 
-function esc(s){ return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+$('example').addEventListener('click', () => { input.value = EXAMPLE; updateCount(); clearError(); });
+$('clear').addEventListener('click', () => { input.value=''; updateCount(); clearError(); results.innerHTML=''; summary.hidden=true; state.results=null; state.refs=null; });
 
-function updateCount(){
-  const n = splitReferences(input.value).length;
-  $('count').textContent = n + (n === 1 ? ' reference' : ' references');
-}
-input.addEventListener('input', updateCount);
-
-$('example').addEventListener('click', () => { input.value = EXAMPLE; updateCount(); });
-$('clear').addEventListener('click', () => { input.value=''; updateCount(); results.innerHTML=''; summary.style.display='none'; });
-
+// ---- rendering -------------------------------------------------------------
 function pendingCard(i, raw){
   const el = document.createElement('div');
-  el.className = 'res s-pending';
-  el.id = 'res-' + i;
+  el.className = 'res s-pending'; el.id = 'res-' + i; el.style.setProperty('--i', i);
   el.innerHTML = `<div class="res-head">
-      <span class="badge b-pending"><span class="spin"></span> Checking</span>
+      <span class="badge b-pending"><span class="btn-spin" style="border-color:rgba(0,0,0,.18);border-top-color:var(--grey)"></span></span>
       <div class="res-in"><span class="res-num">${i+1}.</span>${esc(raw)}</div>
-    </div>`;
+    </div>
+    <div class="skel" style="width:70%; margin-top:11px"></div>`;
   return el;
 }
 
 function renderResult(i, raw, r){
   const el = $('res-' + i);
-  if(!el) return;
-  el.className = 'res s-' + r.status;
-  const L = LABELS[r.status] || LABELS.error;
+  if (!el) return;
+  el.className = 'res s-' + r.status; el.style.setProperty('--i', i);
+  const cls = (r.status==='weak') ? 'weak' : r.status;
   let html = `<div class="res-head">
-      <span class="badge b-${L.cls}">${L.txt}</span>
+      <span class="badge b-${cls}">${svg(STATUS_ICON[r.status]||'alert')}${esc(L('s_'+r.status))}</span>
       <div class="res-in"><span class="res-num">${i+1}.</span>${esc(raw)}</div>
     </div>`;
-  if(r.matched){
+  if (r.matched){
     const m = r.matched;
-    const doi = m.doi ? `<a href="https://doi.org/${esc(m.doi)}" target="_blank" rel="noopener">https://doi.org/${esc(m.doi)}</a>` : '';
+    const meta = [m.authors, m.journal, m.year].filter(Boolean).join('  ·  ');
+    const doi = m.doi ? `<div class="doi"><a href="https://doi.org/${esc(m.doi)}" target="_blank" rel="noopener">doi.org/${esc(m.doi)}</a></div>` : '';
     html += `<div class="matched">
         <div class="mt">${esc(m.title)}</div>
-        <div>${esc([m.authors, m.journal, m.year].filter(Boolean).join(' · '))}</div>
-        ${doi ? `<div style="margin-top:3px">${doi}</div>` : ''}
+        <div>${esc(meta)}</div>${doi}
       </div>`;
   }
-  if(r.notes && r.notes.length){
-    const danger = (r.status === 'retracted' || r.status === 'notfound');
-    html += `<ul class="notes">${r.notes.map(n => `<li class="${danger?'warn':''}">${esc(n)}</li>`).join('')}</ul>`;
+  if (r.notes && r.notes.length){
+    const danger = (r.status==='retracted' || r.status==='notfound');
+    html += `<ul class="notes">${r.notes.map(n => `<li class="${danger?'warn':''}">${svg(danger?'warn':'info')}${esc(renderNote(state.lang, n))}</li>`).join('')}</ul>`;
   }
   el.innerHTML = html;
 }
@@ -210,58 +338,56 @@ function renderSummary(rs){
   const c = { verified:0, check:0, weak:0, notfound:0, retracted:0, error:0 };
   rs.forEach(r => c[r.status]++);
   const order = ['retracted','notfound','weak','check','verified','error'];
-  const chips = order.filter(k => c[k] > 0).map(k => {
-    const L = LABELS[k];
-    return `<span class="chip c-${L.cls}"><b>${c[k]}</b> ${L.txt}</span>`;
+  $('chips').innerHTML = order.filter(k => c[k] > 0).map(k => {
+    const cls = (k==='weak') ? 'weak' : k;
+    return `<span class="chip b-${cls}">${svg(STATUS_ICON[k])}<b>${c[k]}</b> ${esc(L('s_'+k))}</span>`;
   }).join('');
-  $('chips').innerHTML = chips;
 
   const flagged = c.retracted + c.notfound;
-  let verdict;
-  if(flagged > 0){
-    const bits = [];
-    if(c.retracted) bits.push(`${c.retracted} retracted`);
-    if(c.notfound) bits.push(`${c.notfound} not found`);
-    verdict = `⚠️ Found ${bits.join(' and ')} — review these carefully before submitting.`;
-  } else if(c.check + c.weak > 0){
-    verdict = `✅ No fabrications or retractions, but ${c.check + c.weak} reference${c.check + c.weak>1?'s':''} need a metadata check.`;
-  } else {
-    verdict = `✅ All ${c.verified} reference${c.verified>1?'s':''} passed.`;
-  }
-  if(c.error > 0) verdict += ` (${c.error} couldn't be checked — try again.)`;
-  $('verdict').textContent = verdict;
-  summary.style.display = 'block';
+  let key = flagged > 0 ? 'v_flagged' : (c.check + c.weak > 0 ? 'v_metadata' : 'v_allpass');
+  const icon = flagged > 0 ? 'warn' : 'check';
+  let text = L(key);
+  if (c.error > 0) text += ' ' + L('v_error_suffix');
+  $('verdict').innerHTML = svg(icon) + `<span>${esc(text)}</span>`;
+  summary.hidden = false;
 }
 
-// concurrency-limited run with progressive rendering
+// ---- run -------------------------------------------------------------------
 async function run(){
   const refs = splitReferences(input.value);
-  if(!refs.length){ alert('Please paste at least one reference.'); return; }
+  if (!refs.length){ showError(L('empty_input')); return; }
+  clearError();
 
   const btn = $('run');
-  btn.disabled = true; btn.textContent = 'Checking…';
-  results.innerHTML = ''; summary.style.display = 'none';
+  state.running = true; btn.disabled = true;
+  btn.innerHTML = `<span class="btn-spin"></span>${esc(L('btn_checking'))}`;
+  results.innerHTML = ''; summary.hidden = true;
   refs.forEach((raw,i) => results.appendChild(pendingCard(i, raw)));
 
   const out = new Array(refs.length);
   let idx = 0;
   const POOL = 3;
   async function worker(){
-    while(idx < refs.length){
+    while (idx < refs.length){
       const i = idx++;
       try { out[i] = await checkReference(refs[i], { mailto: MAILTO }); }
-      catch(e){ out[i] = { status:'error', label:'Error', input:refs[i], matched:null, notes:['Network error — try again.'], confidence:0 }; }
+      catch(e){ out[i] = { status:'error', input:refs[i], matched:null, notes:[{code:'error'}], confidence:0 }; }
       renderResult(i, refs[i], out[i]);
     }
   }
-  await Promise.all(Array.from({length: Math.min(POOL, refs.length)}, worker));
+  await Promise.all(Array.from({ length: Math.min(POOL, refs.length) }, worker));
 
+  state.refs = refs; state.results = out;
   renderSummary(out);
-  btn.disabled = false; btn.textContent = 'Check references';
+  state.running = false; btn.disabled = false; btn.textContent = L('btn_check');
 }
 $('run').addEventListener('click', run);
 
-updateCount();
+// ---- init ------------------------------------------------------------------
+document.documentElement.lang = state.lang;
+document.documentElement.dir = dirOf(state.lang);
+buildLangMenu();
+applyStatic();
 </script>
 </body>
 </html>
